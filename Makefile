@@ -6,6 +6,8 @@ setup:
 	go get -v -u github.com/alecthomas/gometalinter
 	go get -v -u github.com/jstemmer/go-junit-report
 	gometalinter --install --update
+	go get -u github.com/tools/godep
+	godep restore
 
 build: *.go fmt
 	go build .
