@@ -5,20 +5,26 @@ import (
 	"flag"
 	"net/http"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/jtblin/go-acme"
 	"github.com/jtblin/go-acme/types"
 )
 
 var email, domain string
+var staging, verbose bool
 
 func main() {
 	flag.Parse()
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	}
 	ACME := &acme.ACME{
-		BackendName: "s3",
-		CAServer:    "https://acme-staging.api.letsencrypt.org/directory",
 		DNSProvider: "route53",
 		Email:       email,
 		Domain:      &types.Domain{Main: domain},
+	}
+	if staging {
+		ACME.CAServer = "https://acme-staging.api.letsencrypt.org/directory"
 	}
 	tlsConfig := &tls.Config{}
 	if err := ACME.CreateConfig(tlsConfig); err != nil {
@@ -45,4 +51,6 @@ func main() {
 func init() {
 	flag.StringVar(&email, "email", "", "Email address to register account")
 	flag.StringVar(&domain, "domain", "", "Domain for which to generatec ertificates")
+	flag.BoolVar(&staging, "staging", false, "Use staging ACME server")
+	flag.BoolVar(&verbose, "verbose", false, "Verbose logging")
 }
