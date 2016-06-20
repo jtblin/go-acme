@@ -43,5 +43,5 @@ check:
 watch:
 	CompileDaemon -color=true -build "make test"
 
-
-
+protobuf:
+	protoc -I ./examples/grpc/helloworld examples/grpc/helloworld/*.proto --go_out=plugins=grpc:examples/grpc/helloworld

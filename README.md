@@ -47,14 +47,42 @@ Example with a standard http server:
 	server.Serve(listener)
 ```
 
-See [examples](examples/) for complete example implementation.
+Example with a [gRPC.io](github.com/grpc/grpc-go) server:
+
+```
+func main() {
+	flag.Parse()
+
+	ACME := &acme.ACME{
+		Email:       email,
+		DNSProvider: "route53",
+		Domain:      &types.Domain{Main: domain},
+	}
+	tlsConfig := &tls.Config{}
+	if err := ACME.CreateConfig(tlsConfig); err != nil {
+		panic(err)
+	}
+	ta := credentials.NewTLS(tlsConfig)
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		panic("failed to listen: " + err.Error())
+	}
+	grpcServer := grpc.NewServer(grpc.Creds(ta))
+	pb.RegisterGreeterServer(grpcServer, &server{})
+	if err = grpcServer.Serve(listener); err != nil {
+		panic(err)
+	}
+}
+```
+
+See [examples](examples/) for complete http and gRPC implementations.
 
 ### ACME config
 
 * `BackendName`: the name of the storage backend e.g. fs, s3 (default `fs`), see below for environment variables
-* `Domain`: struct containing the main domain name and optional SANs (Subject Alternate Names)
 * `CAServer`: optional CA server url (default to `https://acme-v01.api.letsencrypt.org/directory`)
 * `DNSProvider`: mandatory DNS provider name e.g. `route53`. 
+* `Domain`: struct containing the main domain name and optional SANs (Subject Alternate Names)
 * `Email`: email address to register the account
 * `SelfSigned`: set to true if you want to generate self signed certificates instead of Let's Encrypt ones
 
