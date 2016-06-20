@@ -17,7 +17,12 @@ import (
 	"github.com/jtblin/go-acme/types"
 )
 
-const defaultCAServer = "https://acme-v01.api.letsencrypt.org/directory"
+const (
+	// #2 - important set to true to bundle CA with certificate and
+	// avoid "transport: x509: certificate signed by unknown authority" error
+	bundleCA        = true
+	defaultCAServer = "https://acme-v01.api.letsencrypt.org/directory"
+)
 
 // ACME allows to connect to lets encrypt and retrieve certs.
 type ACME struct {
@@ -111,7 +116,7 @@ func (a *ACME) buildACMEClient(Account *types.Account) (*acme.Client, error) {
 
 func (a *ACME) getDomainCertificate(client *acme.Client, domains []string) (*types.Certificate, error) {
 	log.Debugf("Loading ACME certificate %v...", domains)
-	certificate, failures := client.ObtainCertificate(domains, false, nil)
+	certificate, failures := client.ObtainCertificate(domains, bundleCA, nil)
 	if len(failures) > 0 {
 		return nil, fmt.Errorf("Cannot obtain certificates %s+v", failures)
 	}
@@ -127,6 +132,7 @@ func (a *ACME) getDomainCertificate(client *acme.Client, domains []string) (*typ
 
 // CreateConfig creates a tls.config from using ACME configuration
 func (a *ACME) CreateConfig(tlsConfig *tls.Config) error {
+	log.Debugf("Create TLS config certificate for %+v: ", a)
 	if a.Domain == nil || a.Domain.Main == "" {
 		panic("The main domain name must be provided")
 	}
