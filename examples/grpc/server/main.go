@@ -34,6 +34,7 @@ func main() {
 		Email:       email,
 		DNSProvider: "route53",
 		Domain:      &types.Domain{Main: domain},
+		Logger:      log.New(),
 	}
 	tlsConfig := &tls.Config{}
 	if err := ACME.CreateConfig(tlsConfig); err != nil {

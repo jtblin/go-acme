@@ -22,6 +22,7 @@ func main() {
 		DNSProvider: "route53",
 		Email:       email,
 		Domain:      &types.Domain{Main: domain},
+		Logger:      log.New(),
 	}
 	if staging {
 		ACME.CAServer = "https://acme-staging.api.letsencrypt.org/directory"

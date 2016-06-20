@@ -6,10 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	fmtlog "log"
+	"log"
+	"os"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
+	"github.com/jtblin/go-logger"
 	"github.com/xenolf/lego/acme"
 
 	"github.com/jtblin/go-acme/backend"
@@ -28,6 +29,7 @@ const (
 type ACME struct {
 	backend     backend.Interface
 	Domain      *types.Domain
+	Logger      logger.Interface
 	BackendName string
 	CAServer    string
 	DNSProvider string
@@ -36,7 +38,7 @@ type ACME struct {
 }
 
 func (a *ACME) retrieveCertificate(client *acme.Client, account *types.Account) (*tls.Certificate, error) {
-	log.Infof("Retrieving ACME certificate...")
+	a.Logger.Println("Retrieving ACME certificate...")
 	domain := []string{}
 	domain = append(domain, a.Domain.Main)
 	domain = append(domain, a.Domain.SANs...)
@@ -50,7 +52,7 @@ func (a *ACME) retrieveCertificate(client *acme.Client, account *types.Account) 
 	if err = a.backend.SaveAccount(account); err != nil {
 		return nil, fmt.Errorf("Error Saving ACME account %+v: %s", account, err.Error())
 	}
-	log.Infof("Retrieved ACME certificate")
+	a.Logger.Println("Retrieved ACME certificate")
 	return account.DomainsCertificate.TLSCert, nil
 }
 
@@ -71,7 +73,6 @@ func needsUpdate(cert *tls.Certificate) bool {
 func (a *ACME) renewCertificate(client *acme.Client, account *types.Account) error {
 	dc := account.DomainsCertificate
 	if needsUpdate(dc.TLSCert) {
-		log.Debugf("Renewing certificate %+v", dc.Domain)
 		renewedCert, err := client.RenewCertificate(acme.CertificateResource{
 			Domain:        dc.Certificate.Domain,
 			CertURL:       dc.Certificate.CertURL,
@@ -82,7 +83,6 @@ func (a *ACME) renewCertificate(client *acme.Client, account *types.Account) err
 		if err != nil {
 			return err
 		}
-		log.Debugf("Renewed certificate %+v", dc.Domain)
 		renewedACMECert := &types.Certificate{
 			Domain:        renewedCert.Domain,
 			CertURL:       renewedCert.CertURL,
@@ -115,12 +115,11 @@ func (a *ACME) buildACMEClient(Account *types.Account) (*acme.Client, error) {
 }
 
 func (a *ACME) getDomainCertificate(client *acme.Client, domains []string) (*types.Certificate, error) {
-	log.Debugf("Loading ACME certificate %v...", domains)
 	certificate, failures := client.ObtainCertificate(domains, bundleCA, nil)
 	if len(failures) > 0 {
 		return nil, fmt.Errorf("Cannot obtain certificates %s+v", failures)
 	}
-	log.Debugf("Loaded ACME certificates %s", domains)
+	a.Logger.Printf("Loaded ACME certificates %s\n", domains)
 	return &types.Certificate{
 		Domain:        certificate.Domain,
 		CertURL:       certificate.CertURL,
@@ -132,12 +131,14 @@ func (a *ACME) getDomainCertificate(client *acme.Client, domains []string) (*typ
 
 // CreateConfig creates a tls.config from using ACME configuration
 func (a *ACME) CreateConfig(tlsConfig *tls.Config) error {
-	log.Debugf("Create TLS config certificate for %+v: ", a)
+	if a.Logger == nil {
+		a.Logger = log.New(os.Stdout, "[go-acme] ", log.Ldate|log.Ltime|log.Lshortfile)
+	}
 	if a.Domain == nil || a.Domain.Main == "" {
-		panic("The main domain name must be provided")
+		a.Logger.Panic("The main domain name must be provided")
 	}
 	if a.SelfSigned {
-		log.Infof("Generating self signed certificate...")
+		a.Logger.Println("Generating self signed certificate...")
 		cert, err := generateSelfSignedCertificate(a.Domain.Main)
 		if err != nil {
 			return err
@@ -146,7 +147,7 @@ func (a *ACME) CreateConfig(tlsConfig *tls.Config) error {
 		return nil
 	}
 
-	acme.Logger = fmtlog.New(ioutil.Discard, "", 0)
+	acme.Logger = log.New(ioutil.Discard, "", 0)
 
 	if a.BackendName == "" {
 		a.BackendName = "fs"
@@ -160,19 +161,19 @@ func (a *ACME) CreateConfig(tlsConfig *tls.Config) error {
 	var account *types.Account
 	var needRegister bool
 
-	log.Infof("Loading ACME certificate...")
+	a.Logger.Println("Loading ACME certificate...")
 	account, err = a.backend.LoadAccount(a.Domain.Main)
 	if err != nil {
 		return err
 	}
 	if account != nil {
-		log.Infof("Loaded ACME config from storage %q", a.backend.Name())
+		a.Logger.Printf("Loaded ACME config from storage %q\n", a.backend.Name())
 		if err = account.DomainsCertificate.Init(); err != nil {
 			return err
 		}
 	} else {
-		log.Infof("Generating ACME Account...")
-		account, err = types.NewAccount(a.Email, a.Domain)
+		a.Logger.Println("Generating ACME Account...")
+		account, err = types.NewAccount(a.Email, a.Domain, a.Logger)
 		if err != nil {
 			return err
 		}
@@ -210,7 +211,7 @@ func (a *ACME) CreateConfig(tlsConfig *tls.Config) error {
 	if len(dc.Certificate.Cert) > 0 && len(dc.Certificate.PrivateKey) > 0 {
 		go func() {
 			if err := a.renewCertificate(client, account); err != nil {
-				log.Errorf("Error renewing ACME certificate for %q: %s",
+				a.Logger.Printf("Error renewing ACME certificate for %q: %s\n",
 					account.DomainsCertificate.Domain.Main, err.Error())
 			}
 		}()
@@ -220,19 +221,18 @@ func (a *ACME) CreateConfig(tlsConfig *tls.Config) error {
 		}
 	}
 	tlsConfig.GetCertificate = func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		log.Debugf("Requesting certificate for %q: ", clientHello.ServerName)
 		if clientHello.ServerName != a.Domain.Main {
 			return nil, errors.New("Unknown server name")
 		}
 		return dc.TLSCert, nil
 	}
-	log.Infoln("Loaded certificate...")
+	a.Logger.Println("Loaded certificate...")
 
 	ticker := time.NewTicker(24 * time.Hour)
 	go func() {
 		for range ticker.C {
 			if err := a.renewCertificate(client, account); err != nil {
-				log.Errorf("Error renewing ACME certificate %q: %s",
+				a.Logger.Printf("Error renewing ACME certificate %q: %s\n",
 					account.DomainsCertificate.Domain.Main, err.Error())
 			}
 		}
